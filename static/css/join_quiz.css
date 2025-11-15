@@ -1,0 +1,455 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    overflow: hidden;
+}
+
+#nameEntry {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+
+.name-card {
+    background: white;
+    border-radius: 20px;
+    padding: 50px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    max-width: 400px;
+    width: 100%;
+    text-align: center;
+}
+
+.name-card h1 {
+    color: #667eea;
+    margin-bottom: 10px;
+}
+
+.name-card input {
+    width: 100%;
+    padding: 15px;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    font-size: 1.1em;
+    margin: 20px 0;
+}
+
+.name-card input:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.btn {
+    width: 100%;
+    padding: 15px;
+    border: none;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    font-size: 1.1em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+}
+
+#gameArea {
+    display: none;
+    height: 100vh;
+    padding: 20px;
+}
+
+.game-header {
+    background: white;
+    padding: 15px 30px;
+    border-radius: 15px;
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.quiz-title {
+    font-size: 1.5em;
+    color: #667eea;
+    font-weight: 700;
+}
+
+.timer {
+    font-size: 2em;
+    font-weight: 700;
+    color: #dc3545;
+}
+
+.game-container {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    height: calc(100% - 100px);
+}
+
+.question-area {
+    background: white;
+    border-radius: 15px;
+    padding: 20px 30px;
+    text-align: center;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.question-text {
+    font-size: 1.5em;
+    color: #333;
+    font-weight: 600;
+}
+
+/* Sala de espera dos jogadores */
+.waiting-room {
+    background: white;
+    border-radius: 15px;
+    padding: 30px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    min-height: 120px;
+    position: relative;
+}
+
+.waiting-room::before {
+    content: '🏠 Sala de Espera';
+    position: absolute;
+    top: 10px;
+    left: 20px;
+    font-size: 1em;
+    font-weight: 600;
+    color: #667eea;
+}
+
+.players-waiting {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    justify-content: center;
+    align-items: center;
+    min-height: 70px;
+    padding-top: 20px;
+}
+
+/* Container da área de jogo com rua vertical */
+.game-play-area {
+    display: grid;
+    grid-template-columns: 1fr 100px 1fr;
+    gap: 0;
+    flex: 1;
+    position: relative;
+}
+
+/* Colunas de respostas */
+.answers-column {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    position: relative;
+}
+
+/* Rua vertical no meio */
+.vertical-road {
+    background: linear-gradient(90deg, #555 0%, #666 50%, #555 100%);
+    position: relative;
+    overflow: visible;
+}
+
+.road-lines-vertical {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: repeating-linear-gradient(
+        180deg,
+        #fff 0px,
+        #fff 30px,
+        transparent 30px,
+        transparent 60px
+    );
+    transform: translateX(-50%);
+}
+
+/* Bifurcações da rua para as respostas */
+.road-branch {
+    position: absolute;
+    height: 60px;
+    background: linear-gradient(90deg, #666, #555);
+    z-index: 1;
+}
+
+.road-branch.left {
+    left: -80px;
+    width: 80px;
+    border-radius: 0 0 0 10px;
+}
+
+.road-branch.right {
+    right: -80px;
+    width: 80px;
+    border-radius: 0 0 10px 0;
+}
+
+.road-branch-line {
+    position: absolute;
+    height: 4px;
+    background: repeating-linear-gradient(
+        90deg,
+        #fff 0px,
+        #fff 20px,
+        transparent 20px,
+        transparent 40px
+    );
+    top: 50%;
+    transform: translateY(-50%);
+    width: 100%;
+}
+
+.road-decoration {
+    position: absolute;
+    font-size: 1.5em;
+    animation: sway 3s ease-in-out infinite;
+}
+
+.road-decoration:nth-child(2) {
+    top: 10%;
+    left: 5px;
+}
+
+.road-decoration:nth-child(3) {
+    top: 40%;
+    right: 5px;
+    animation-delay: 1s;
+}
+
+.road-decoration:nth-child(4) {
+    top: 70%;
+    left: 5px;
+    animation-delay: 2s;
+}
+
+@keyframes sway {
+    0%, 100% { transform: rotate(-5deg) scale(1); }
+    50% { transform: rotate(5deg) scale(1.1); }
+}
+
+.answer-zone {
+    background: white;
+    border-radius: 15px;
+    padding: 20px;
+    position: relative;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 3px solid transparent;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    display: flex;
+    flex-direction: column;
+    min-height: 150px;
+}
+
+.answer-zone:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    border-color: #667eea;
+}
+
+.answer-zone.disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.answer-zone.disabled:hover {
+    transform: none;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.answer-label {
+    font-size: 1.5em;
+    font-weight: 700;
+    color: #667eea;
+    margin-bottom: 10px;
+}
+
+.answer-text {
+    font-size: 1.2em;
+    color: #333;
+    margin-bottom: 20px;
+}
+
+.players-in-zone {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 60px;
+    flex: 1;
+}
+
+.player-avatar {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: white;
+    font-weight: 700;
+    font-size: 1.2em;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+    position: relative;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.player-avatar.in-waiting-room {
+    width: 60px;
+    height: 60px;
+    font-size: 1.5em;
+}
+
+.player-avatar.traveling {
+    position: fixed;
+    z-index: 1000;
+    pointer-events: none;
+}
+
+.player-avatar::after {
+    content: attr(data-name);
+    position: absolute;
+    bottom: -25px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.8);
+    color: white;
+    padding: 3px 8px;
+    border-radius: 5px;
+    font-size: 0.7em;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+}
+
+.player-avatar:hover::after {
+    opacity: 1;
+}
+
+@keyframes bounce {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-10px);
+    }
+}
+
+.player-avatar.bounce {
+    animation: bounce 0.5s ease;
+}
+
+@keyframes idle-bounce {
+    0%, 100% {
+        transform: translateY(0) scale(1);
+    }
+    50% {
+        transform: translateY(-8px) scale(1.05);
+    }
+}
+
+@keyframes idle-wiggle {
+    0%, 100% {
+        transform: rotate(0deg) scale(1);
+    }
+    25% {
+        transform: rotate(-5deg) scale(1.05);
+    }
+    75% {
+        transform: rotate(5deg) scale(1.05);
+    }
+}
+
+@keyframes idle-pulse {
+    0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+    }
+    50% {
+        transform: scale(1.1);
+        box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+    }
+}
+
+@keyframes idle-sway {
+    0%, 100% {
+        transform: translateX(0) rotate(0deg);
+    }
+    50% {
+        transform: translateX(5px) rotate(3deg);
+    }
+}
+
+.player-avatar.idle-animation {
+    animation-duration: 2s;
+    animation-iteration-count: infinite;
+    animation-timing-function: ease-in-out;
+}
+
+.waiting-message {
+    background: white;
+    border-radius: 15px;
+    padding: 50px;
+    text-align: center;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.waiting-message h2 {
+    color: #667eea;
+    font-size: 2em;
+    margin-bottom: 20px;
+}
+
+.waiting-message p {
+    color: #666;
+    font-size: 1.2em;
+}
+
+.correct-answer {
+    border-color: #28a745 !important;
+    background: #d4edda !important;
+}
+
+.wrong-answer {
+    border-color: #dc3545 !important;
+    background: #f8d7da !important;
+}
+
+.results-screen {
+    background: white;
+    border-radius: 15px;
+    padding: 50px;
+    text-align: center;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.results-screen h2 {
+    color: #667eea;
+    font-size: 2.5em;
+    margin-bottom: 30px;
+}
