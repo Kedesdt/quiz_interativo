@@ -1,4 +1,4 @@
-const quizCode = '{{ code }}';
+const quizCode = window.QUIZ_CODE;
 let socket;
 let quizData;
 let currentQuestionIndex = 0;

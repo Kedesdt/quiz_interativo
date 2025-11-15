@@ -6,6 +6,12 @@
     <title>Host Quiz - Quiz.io</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/host_quiz.css') }}">
+    <script>
+        // Passar variáveis do Flask para JavaScript
+        window.QUIZ_CODE = "{{ code }}";
+        window.QUIZ_TITLE = "{{ quiz.title }}";
+        window.QUIZ_TIME_LIMIT = {{ quiz.time_limit }};
+    </script>
 </head>
 <body>
     <div class="container">
