@@ -286,12 +286,12 @@ function movePlayerToAnswerInstant(playerId, answerId, playerName, playerColor) 
 function movePlayerToAnswer(playerId, answerId, playerName, playerColor) {
     const player = players.get(playerId);
     if (!player) return;
-
     if (!answerId) return;
 
     // Verificar se o jogador já está em alguma resposta
     const existingInZone = document.querySelector(`.players-in-zone .player-avatar[data-player-id="${playerId}"]`);
     let startX, startY;
+    let isComingFromAnswer = false;
 
     // Criar avatar de viagem
     const tempAvatar = document.createElement('div');
@@ -303,13 +303,22 @@ function movePlayerToAnswer(playerId, answerId, playerName, playerColor) {
     tempAvatar.style.height = '50px';
 
     if (existingInZone) {
-        // Jogador está mudando de resposta - começar de onde ele está
+        // Jogador está mudando de resposta - começar exatamente de onde ele está
         const existingRect = existingInZone.getBoundingClientRect();
         startX = existingRect.left;
         startY = existingRect.top;
+        isComingFromAnswer = true;
+        
+        // Pegar a zona de origem
+        const originZone = existingInZone.closest('.answer-zone');
+        if (originZone) {
+            var originAnswerIndex = parseInt(originZone.getAttribute('data-answer-index'));
+            var originIsLeft = originAnswerIndex % 2 === 0;
+        }
+        
         existingInZone.remove();
     } else {
-        // Primeira resposta - começar da sala de espera
+        // Primeira resposta - começar exatamente da sala de espera
         const waitingAvatar = document.querySelector(`.players-waiting .player-avatar[data-player-id="${playerId}"]`);
         if (waitingAvatar) {
             const waitingRect = waitingAvatar.getBoundingClientRect();
@@ -330,10 +339,12 @@ function movePlayerToAnswer(playerId, answerId, playerName, playerColor) {
 
     tempAvatar.style.left = startX + 'px';
     tempAvatar.style.top = startY + 'px';
+    tempAvatar.style.position = 'fixed';
+    tempAvatar.style.zIndex = '1000';
     
     document.body.appendChild(tempAvatar);
 
-    // Calcular caminho com bifurcação
+    // Calcular posições do destino
     const zone = document.querySelector(`[data-answer-id="${answerId}"]`);
     if (!zone) {
         tempAvatar.remove();
@@ -343,54 +354,117 @@ function movePlayerToAnswer(playerId, answerId, playerName, playerColor) {
     const zoneRect = zone.getBoundingClientRect();
     const road = document.querySelector('.vertical-road');
     const roadRect = road.getBoundingClientRect();
-    const branch = document.querySelector(`.road-branch[data-answer-id="${answerId}"]`);
     
     // Determinar se é resposta da esquerda ou direita
     const answerIndex = parseInt(zone.getAttribute('data-answer-index'));
     const isLeft = answerIndex % 2 === 0;
     
-    // Posição final (topo da zona de resposta)
-    const finalX = zoneRect.left + zoneRect.width / 2 - 25;
-    const finalY = zoneRect.top - 30; // Acima da zona
-    
-    // Posições da rua
+    // Posições chave
     const roadCenterX = roadRect.left + roadRect.width / 2 - 25;
-    const roadMidY = (startY + zoneRect.top) / 2;
+    const branchY = zoneRect.top + 20; // Altura da bifurcação (alinhada com o topo da resposta)
+    const branchX = isLeft ? roadCenterX - 60 : roadCenterX + 60; // Ponto na rua horizontal
     
-    // Ponto da bifurcação
-    const branchY = zoneRect.top;
-    const branchX = isLeft ? roadCenterX - 40 : roadCenterX + 40;
+    // Posição final dentro da zona de resposta
+    const finalZone = document.getElementById(`zone-${answerId}`);
+    const playersZone = finalZone || zone.querySelector('.players-in-zone');
+    let finalX = zoneRect.left + zoneRect.width / 2 - 25;
+    let finalY = zoneRect.top + zoneRect.height / 2 - 25;
 
-    // Animar em 4 etapas: Origem -> Rua central -> Bifurcação -> Resposta
-    setTimeout(() => {
-        // Etapa 1: Ir para a rua central
-        tempAvatar.style.transition = 'all 0.5s ease-in-out';
-        tempAvatar.style.left = roadCenterX + 'px';
-        tempAvatar.style.top = roadMidY + 'px';
-        tempAvatar.style.transform = 'rotate(90deg) scale(1.2)';
-    }, 50);
+    let delay = 50;
 
-    setTimeout(() => {
-        // Etapa 2: Descer pela rua até a altura da bifurcação
-        tempAvatar.style.transition = 'all 0.7s ease-in-out';
-        tempAvatar.style.top = branchY + 'px';
-        tempAvatar.style.transform = 'rotate(180deg) scale(1.3)';
-    }, 600);
+    if (isComingFromAnswer) {
+        // CAMINHO DE RESPOSTA PARA RESPOSTA:
+        // 1. Sair da posição atual até a rua da resposta (horizontal)
+        // 2. Pela rua até o meio da avenida (horizontal)
+        // 3. Descer/subir pela avenida até a altura da nova resposta (vertical)
+        // 4. Entrar na rua da nova resposta (horizontal)
+        // 5. Ir até a posição final (horizontal)
 
-    setTimeout(() => {
-        // Etapa 3: Entrar na bifurcação (esquerda ou direita)
-        tempAvatar.style.transition = 'all 0.5s ease-in-out';
-        tempAvatar.style.left = branchX + 'px';
-        tempAvatar.style.transform = `rotate(${isLeft ? 270 : 90}deg) scale(1.2)`;
-    }, 1350);
+        const originBranchX = originIsLeft ? roadCenterX - 60 : roadCenterX + 60;
+        const originBranchY = startY; // Mesma altura de onde está
 
-    setTimeout(() => {
-        // Etapa 4: Ir até a resposta
-        tempAvatar.style.transition = 'all 0.6s ease-out';
-        tempAvatar.style.left = finalX + 'px';
-        tempAvatar.style.top = finalY + 'px';
-        tempAvatar.style.transform = 'rotate(360deg) scale(1)';
-    }, 1900);
+        setTimeout(() => {
+            // Etapa 1: Sair até a rua da resposta de origem (movimento horizontal)
+            tempAvatar.style.transition = 'all 0.4s ease-in-out';
+            tempAvatar.style.left = originBranchX + 'px';
+            tempAvatar.style.transform = `rotate(${originIsLeft ? 0 : 180}deg) scale(1.1)`;
+        }, delay);
+        delay += 450;
+
+        setTimeout(() => {
+            // Etapa 2: Ir pela rua até a avenida central (movimento horizontal)
+            tempAvatar.style.transition = 'all 0.4s ease-in-out';
+            tempAvatar.style.left = roadCenterX + 'px';
+            tempAvatar.style.transform = `rotate(${originIsLeft ? 90 : 270}deg) scale(1.2)`;
+        }, delay);
+        delay += 450;
+
+        setTimeout(() => {
+            // Etapa 3: Descer/subir pela avenida até a altura da nova resposta (movimento vertical)
+            tempAvatar.style.transition = 'all 0.5s ease-in-out';
+            tempAvatar.style.top = branchY + 'px';
+            tempAvatar.style.transform = `rotate(${branchY > originBranchY ? 180 : 0}deg) scale(1.3)`;
+        }, delay);
+        delay += 550;
+
+        setTimeout(() => {
+            // Etapa 4: Entrar na rua da nova resposta (movimento horizontal)
+            tempAvatar.style.transition = 'all 0.4s ease-in-out';
+            tempAvatar.style.left = branchX + 'px';
+            tempAvatar.style.transform = `rotate(${isLeft ? 270 : 90}deg) scale(1.1)`;
+        }, delay);
+        delay += 450;
+
+        setTimeout(() => {
+            // Etapa 5: Ir até a posição final (movimento horizontal)
+            tempAvatar.style.transition = 'all 0.5s ease-out';
+            tempAvatar.style.left = finalX + 'px';
+            tempAvatar.style.top = finalY + 'px';
+            tempAvatar.style.transform = 'rotate(360deg) scale(1)';
+        }, delay);
+        delay += 550;
+
+    } else {
+        // CAMINHO DA SALA DE ESPERA PARA RESPOSTA:
+        // 1. Sair da sala até o meio da avenida (movimento diagonal/direto)
+        // 2. Descer pela avenida até a altura da resposta (movimento vertical)
+        // 3. Entrar na rua da resposta (movimento horizontal)
+        // 4. Ir até a posição final (movimento horizontal)
+
+        setTimeout(() => {
+            // Etapa 1: Ir da sala de espera até a avenida central
+            tempAvatar.style.transition = 'all 0.5s ease-in-out';
+            tempAvatar.style.left = roadCenterX + 'px';
+            tempAvatar.style.top = startY + 'px';
+            tempAvatar.style.transform = 'rotate(90deg) scale(1.2)';
+        }, delay);
+        delay += 550;
+
+        setTimeout(() => {
+            // Etapa 2: Descer pela avenida até a altura da bifurcação
+            tempAvatar.style.transition = 'all 0.6s ease-in-out';
+            tempAvatar.style.top = branchY + 'px';
+            tempAvatar.style.transform = 'rotate(180deg) scale(1.3)';
+        }, delay);
+        delay += 650;
+
+        setTimeout(() => {
+            // Etapa 3: Entrar na rua da resposta (esquerda ou direita)
+            tempAvatar.style.transition = 'all 0.4s ease-in-out';
+            tempAvatar.style.left = branchX + 'px';
+            tempAvatar.style.transform = `rotate(${isLeft ? 270 : 90}deg) scale(1.1)`;
+        }, delay);
+        delay += 450;
+
+        setTimeout(() => {
+            // Etapa 4: Ir até a posição final
+            tempAvatar.style.transition = 'all 0.5s ease-out';
+            tempAvatar.style.left = finalX + 'px';
+            tempAvatar.style.top = finalY + 'px';
+            tempAvatar.style.transform = 'rotate(360deg) scale(1)';
+        }, delay);
+        delay += 550;
+    }
 
     // Finalizar: adicionar avatar fixo na zona
     setTimeout(() => {
@@ -416,7 +490,7 @@ function movePlayerToAnswer(playerId, answerId, playerName, playerColor) {
                 finalAvatar.classList.remove('bounce');
             }, 500);
         }
-    }, 2550);
+    }, delay + 100);
 }
 
 function updatePlayerPositions() {
