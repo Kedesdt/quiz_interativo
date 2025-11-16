@@ -4,11 +4,19 @@ from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 import secrets
 import json
+import os
+from dotenv import load_dotenv
+import qrcode
+from io import BytesIO
+import base64
+
+load_dotenv()
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = secrets.token_hex(16)
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///quiz.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["HOST_URL"] = os.getenv("HOST_URL", "http://localhost:5000")
 
 db = SQLAlchemy(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
@@ -20,6 +28,7 @@ class Quiz(db.Model):
     title = db.Column(db.String(200), nullable=False)
     code = db.Column(db.String(10), unique=True, nullable=False)
     time_limit = db.Column(db.Integer, default=30)  # segundos por pergunta
+    is_anonymous = db.Column(db.Boolean, default=False)  # Se o quiz é anônimo
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     questions = db.relationship(
         "Question", backref="quiz", lazy=True, cascade="all, delete-orphan"
@@ -86,7 +95,12 @@ def save_quiz():
     # Gerar código único para o quiz
     code = secrets.token_urlsafe(6)[:6].upper()
 
-    quiz = Quiz(title=data["title"], code=code, time_limit=data.get("time_limit", 30))
+    quiz = Quiz(
+        title=data["title"], 
+        code=code, 
+        time_limit=data.get("time_limit", 30),
+        is_anonymous=data.get("is_anonymous", False)
+    )
     db.session.add(quiz)
     db.session.flush()
 
@@ -111,12 +125,24 @@ def save_quiz():
     return jsonify({"success": True, "code": code, "quiz_id": quiz.id})
 
 
-@app.route("/quiz/<code>")
+@app.route("/join/<code>")
 def join_quiz(code):
     quiz = Quiz.query.filter_by(code=code).first()
     if not quiz:
         return "Quiz não encontrado", 404
-    return render_template("join_quiz.html", code=code)
+    
+    # Gerar QR Code
+    join_url = f"{app.config['HOST_URL']}/join/{code}"
+    qr = qrcode.QRCode(version=1, box_size=10, border=4)
+    qr.add_data(join_url)
+    qr.make(fit=True)
+    
+    img = qr.make_image(fill_color="black", back_color="white")
+    buffered = BytesIO()
+    img.save(buffered, format="PNG")
+    qr_code_base64 = base64.b64encode(buffered.getvalue()).decode()
+    
+    return render_template("join_quiz.html", code=code, qr_code=qr_code_base64, join_url=join_url)
 
 
 @app.route("/host/<code>")
@@ -124,7 +150,19 @@ def host_quiz(code):
     quiz = Quiz.query.filter_by(code=code).first()
     if not quiz:
         return "Quiz não encontrado", 404
-    return render_template("host_quiz.html", code=code, quiz=quiz)
+    
+    # Gerar QR Code
+    join_url = f"{app.config['HOST_URL']}/join/{code}"
+    qr = qrcode.QRCode(version=1, box_size=10, border=4)
+    qr.add_data(join_url)
+    qr.make(fit=True)
+    
+    img = qr.make_image(fill_color="black", back_color="white")
+    buffered = BytesIO()
+    img.save(buffered, format="PNG")
+    qr_code_base64 = base64.b64encode(buffered.getvalue()).decode()
+    
+    return render_template("host_quiz.html", code=code, quiz=quiz, qr_code=qr_code_base64, join_url=join_url)
 
 
 @app.route("/api/quiz/<code>")
@@ -165,6 +203,7 @@ def get_quiz(code):
             "title": quiz.title,
             "code": quiz.code,
             "time_limit": quiz.time_limit,
+            "is_anonymous": quiz.is_anonymous,
             "questions": questions_data,
             "current_question_index": quiz.current_question_index,
             "is_active": quiz.is_active,

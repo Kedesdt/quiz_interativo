@@ -20,7 +20,13 @@
                 <h1 id="quizTitle">{{ quiz.title }}</h1>
                 <p style="color: #666;">Tempo por pergunta: <strong>{{ quiz.time_limit }}s</strong></p>
             </div>
-            <div class="quiz-code">{{ code }}</div>
+            <div class="code-qr-container">
+                <div class="quiz-code">{{ code }}</div>
+                <div class="qr-code-display">
+                    <img src="data:image/png;base64,{{ qr_code }}" alt="QR Code" />
+                    <p style="font-size: 0.8em; color: #666; margin-top: 5px;">Escaneie para entrar</p>
+                </div>
+            </div>
         </div>
 
         <div class="main-content">

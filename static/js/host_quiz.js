@@ -238,7 +238,7 @@ async function loadStatistics() {
                             <span class="chart-count">${answer.count}</span>
                         </div>
                     </div>
-                    <div class="chart-answer-text">${answer.text}</div>
+                    <div class="chart-answer-text">${answer.answer_text}</div>
                 </div>
             `;
         });

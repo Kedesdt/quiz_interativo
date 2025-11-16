@@ -11,9 +11,21 @@
     <div id="nameEntry">
         <div class="name-card">
             <h1>🎮 Quiz.io</h1>
-            <p style="color: #666; margin-bottom: 20px;">Código: <strong id="quizCodeDisplay"></strong></p>
+            <div class="code-qr-section">
+                <div>
+                    <p style="color: #666; margin-bottom: 5px;">Código:</p>
+                    <p style="font-size: 1.8em; font-weight: 700; color: #667eea; margin-bottom: 10px;" id="quizCodeDisplay"></p>
+                </div>
+                <div class="qr-code-small">
+                    <img src="data:image/png;base64,{{ qr_code }}" alt="QR Code" />
+                    <p style="font-size: 0.7em; color: #999;">Compartilhe</p>
+                </div>
+            </div>
             <input type="text" id="playerName" placeholder="Digite seu nome" maxlength="20">
-            <button class="btn" onclick="joinGame()">Entrar no Jogo</button>
+            <div class="button-group">
+                <button class="btn btn-primary" onclick="joinGame()">Entrar no Jogo</button>
+                <button class="btn btn-anonymous" onclick="joinAnonymously()">🕶️ Entrar Anonimamente</button>
+            </div>
         </div>
     </div>
 

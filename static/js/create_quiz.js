@@ -123,9 +123,12 @@ document.getElementById('quizForm').addEventListener('submit', async function(e)
         return;
     }
     
+    const isAnonymous = document.getElementById('isAnonymous').checked;
+    
     const quizData = {
         title: title,
         time_limit: parseInt(timeLimit),
+        is_anonymous: isAnonymous,
         questions: questions
     };
     

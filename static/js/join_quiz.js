@@ -8,6 +8,15 @@ let currentQuestionIndex = 0;
 let players = new Map();
 let timerInterval;
 let canSelectAnswer = true;
+let isAnonymous = false;
+
+function joinAnonymously() {
+    // Gerar nome aleatório
+    const randomId = Math.floor(Math.random() * 10000);
+    const anonymousName = `Anon${randomId}`;
+    document.getElementById('playerName').value = anonymousName;
+    joinGame();
+}
 
 async function joinGame() {
     const playerName = document.getElementById('playerName').value.trim();
@@ -59,19 +68,6 @@ async function joinGame() {
         }
     });
 
-    socket.on('quiz_state', (data) => {
-        // Quiz já começou - carregar estado atual
-        if (data.is_active && data.current_question_index >= 0) {
-            currentQuestionIndex = data.current_question_index;
-            document.getElementById('nameEntry').style.display = 'none';
-            document.getElementById('gameArea').style.display = 'block';
-            document.getElementById('waitingArea').style.display = 'none';
-            document.getElementById('gameContainer').style.display = 'flex';
-            initializePlayersInWaitingRoom();
-            loadQuestion(currentQuestionIndex);
-        }
-    });
-
     socket.on('player_joined', (data) => {
         players.set(data.player_id, data);
     });
@@ -106,6 +102,7 @@ async function joinGame() {
     // Carregar dados do quiz
     const response = await fetch(`/api/quiz/${quizCode}`);
     quizData = await response.json();
+    isAnonymous = quizData.is_anonymous || false;
     document.getElementById('quizTitle').textContent = quizData.title;
 
     document.getElementById('nameEntry').style.display = 'none';
@@ -129,9 +126,9 @@ function initializePlayersInWaitingRoom() {
         const avatar = document.createElement('div');
         avatar.className = 'player-avatar in-waiting-room idle-animation';
         avatar.style.backgroundColor = player.color;
-        avatar.textContent = player.name.charAt(0).toUpperCase();
+        avatar.textContent = isAnonymous ? '?' : player.name.charAt(0).toUpperCase();
         avatar.setAttribute('data-player-id', playerId);
-        avatar.setAttribute('data-name', player.name);
+        avatar.setAttribute('data-name', isAnonymous ? 'Jogador' : player.name);
         avatar.id = `player-${playerId}`;
         
         // Escolher animação aleatória
@@ -204,11 +201,15 @@ function loadQuestion(index) {
             const topPosition = zoneRect.top - roadRect.top;
             branch.style.top = topPosition + 'px';
             
+            // Largura da bifurcação vai até a metade da resposta (50% da largura da zona)
+            const branchWidth = zoneRect.width * 0.5;
+            branch.style.width = branchWidth + 'px';
+            
             branch.innerHTML = '<div class="road-branch-line"></div>';
             
             road.appendChild(branch);
         });
-    }, 50);
+    }, 100);
 
     // Retornar todos os jogadores para a sala de espera
     returnAllPlayersToWaitingRoom();
@@ -230,9 +231,9 @@ function returnAllPlayersToWaitingRoom() {
         const avatar = document.createElement('div');
         avatar.className = 'player-avatar in-waiting-room idle-animation';
         avatar.style.backgroundColor = player.color;
-        avatar.textContent = player.name.charAt(0).toUpperCase();
+        avatar.textContent = isAnonymous ? '?' : player.name.charAt(0).toUpperCase();
         avatar.setAttribute('data-player-id', playerId);
-        avatar.setAttribute('data-name', player.name);
+        avatar.setAttribute('data-name', isAnonymous ? 'Jogador' : player.name);
         avatar.id = `player-${playerId}`;
         
         // Escolher animação aleatória
@@ -276,9 +277,10 @@ function movePlayerToAnswerInstant(playerId, answerId, playerName, playerColor) 
     const finalAvatar = document.createElement('div');
     finalAvatar.className = 'player-avatar idle-animation';
     finalAvatar.style.backgroundColor = playerColor || player.color;
-    finalAvatar.textContent = (playerName || player.name).charAt(0).toUpperCase();
+    const displayName = playerName || player.name;
+    finalAvatar.textContent = isAnonymous ? '?' : displayName.charAt(0).toUpperCase();
     finalAvatar.setAttribute('data-player-id', playerId);
-    finalAvatar.setAttribute('data-name', playerName || player.name);
+    finalAvatar.setAttribute('data-name', isAnonymous ? 'Jogador' : displayName);
     finalAvatar.style.animationName = randomAnimation;
     finalAvatar.style.animationDelay = (Math.random() * 1.5) + 's';
     
@@ -288,42 +290,41 @@ function movePlayerToAnswerInstant(playerId, answerId, playerName, playerColor) 
     }
 }
 
+// Mapa para rastrear animações em andamento
+const activeAnimations = new Map();
+
 function movePlayerToAnswer(playerId, answerId, playerName, playerColor) {
     const player = players.get(playerId);
     if (!player) return;
     if (!answerId) return;
 
+    // Cancelar animação anterior se existir
+    if (activeAnimations.has(playerId)) {
+        activeAnimations.get(playerId).cancel = true;
+    }
+
     // Verificar se o jogador já está em alguma resposta
     const existingInZone = document.querySelector(`.players-in-zone .player-avatar[data-player-id="${playerId}"]`);
     let startX, startY;
     let isComingFromAnswer = false;
-
-    // Criar avatar de viagem
-    const tempAvatar = document.createElement('div');
-    tempAvatar.className = 'player-avatar traveling';
-    tempAvatar.style.backgroundColor = playerColor || player.color;
-    tempAvatar.textContent = (playerName || player.name).charAt(0).toUpperCase();
-    tempAvatar.setAttribute('data-player-id', playerId + '-temp');
-    tempAvatar.style.width = '50px';
-    tempAvatar.style.height = '50px';
+    let originAnswerIndex, originIsLeft;
 
     if (existingInZone) {
-        // Jogador está mudando de resposta - começar exatamente de onde ele está
+        // Jogador está mudando de resposta
         const existingRect = existingInZone.getBoundingClientRect();
         startX = existingRect.left;
         startY = existingRect.top;
         isComingFromAnswer = true;
         
-        // Pegar a zona de origem
         const originZone = existingInZone.closest('.answer-zone');
         if (originZone) {
-            var originAnswerIndex = parseInt(originZone.getAttribute('data-answer-index'));
-            var originIsLeft = originAnswerIndex % 2 === 0;
+            originAnswerIndex = parseInt(originZone.getAttribute('data-answer-index'));
+            originIsLeft = originAnswerIndex % 2 === 0;
         }
         
         existingInZone.remove();
     } else {
-        // Primeira resposta - começar exatamente da sala de espera
+        // Primeira resposta - começar da sala de espera
         const waitingAvatar = document.querySelector(`.players-waiting .player-avatar[data-player-id="${playerId}"]`);
         if (waitingAvatar) {
             const waitingRect = waitingAvatar.getBoundingClientRect();
@@ -338,19 +339,32 @@ function movePlayerToAnswer(playerId, answerId, playerName, playerColor) {
         }
     }
 
-    // Remover qualquer outro avatar duplicado
-    const allOldAvatars = document.querySelectorAll(`[data-player-id="${playerId}"]`);
-    allOldAvatars.forEach(el => el.remove());
+    // Remover TODOS os avatares antigos do jogador (incluindo temp)
+    const allOldAvatars = document.querySelectorAll(`[data-player-id="${playerId}"], [data-player-id="${playerId}-temp"]`);
+    allOldAvatars.forEach(el => {
+        if (el.parentNode) el.remove();
+    });
 
+    // Criar avatar de viagem DEPOIS de limpar
+    const tempAvatar = document.createElement('div');
+    tempAvatar.className = 'player-avatar traveling';
+    tempAvatar.style.backgroundColor = playerColor || player.color;
+    const displayName = playerName || player.name;
+    tempAvatar.textContent = isAnonymous ? '?' : displayName.charAt(0).toUpperCase();
+    tempAvatar.setAttribute('data-player-id', playerId + '-temp');
+    tempAvatar.style.width = '50px';
+    tempAvatar.style.height = '50px';
+    tempAvatar.style.transition = 'none';
     tempAvatar.style.left = startX + 'px';
     tempAvatar.style.top = startY + 'px';
     tempAvatar.style.position = 'fixed';
     tempAvatar.style.zIndex = '1000';
+    tempAvatar.style.pointerEvents = 'none';
     
     document.body.appendChild(tempAvatar);
 
-    // Calcular posições do destino
-    const zone = document.querySelector(`[data-answer-id="${answerId}"]`);
+    // Calcular posições do destino - especificar .answer-zone para não pegar .road-branch
+    const zone = document.querySelector(`.answer-zone[data-answer-id="${answerId}"]`);
     if (!zone) {
         tempAvatar.remove();
         return;
@@ -360,120 +374,155 @@ function movePlayerToAnswer(playerId, answerId, playerName, playerColor) {
     const road = document.querySelector('.vertical-road');
     const roadRect = road.getBoundingClientRect();
     
-    // Determinar se é resposta da esquerda ou direita
     const answerIndex = parseInt(zone.getAttribute('data-answer-index'));
     const isLeft = answerIndex % 2 === 0;
     
-    // Posições chave
+    // Centro da avenida
     const roadCenterX = roadRect.left + roadRect.width / 2 - 25;
-    const branchY = zoneRect.top + 20; // Altura da bifurcação (alinhada com o topo da resposta)
-    const branchX = isLeft ? roadCenterX - 60 : roadCenterX + 60; // Ponto na rua horizontal
     
-    // Posição final dentro da zona de resposta
-    const finalZone = document.getElementById(`zone-${answerId}`);
-    const playersZone = finalZone || zone.querySelector('.players-in-zone');
-    let finalX = zoneRect.left + zoneRect.width / 2 - 25;
-    let finalY = zoneRect.top + zoneRect.height / 2 - 25;
+    // Bifurcação: início (na borda da avenida) e fim (50% dentro da zona)
+    const branchStartY = zoneRect.top + 30 - 25;
+    const branchStartX = isLeft ? roadRect.left - 25 : roadRect.right - 25;
+    
+    // Fim da bifurcação: 50% da largura da zona, partindo da borda mais próxima da avenida
+    const branchEndX = isLeft 
+        ? zoneRect.right - zoneRect.width * 0.5 - 25
+        : zoneRect.left + zoneRect.width * 0.5 - 25;
+    const branchEndY = branchStartY;
+    
+    // Posição final dentro da zona de resposta (centro)
+    const finalX = zoneRect.left + zoneRect.width / 2 - 25;
+    const finalY = zoneRect.top + zoneRect.height / 2 - 25;
 
-    let delay = 50;
-
+    // Definir waypoints (pontos do caminho)
+    let waypoints = [];
+    
     if (isComingFromAnswer) {
-        // CAMINHO DE RESPOSTA PARA RESPOSTA:
-        // 1. Sair da posição atual até a rua da resposta (horizontal)
-        // 2. Pela rua até o meio da avenida (horizontal)
-        // 3. Descer/subir pela avenida até a altura da nova resposta (vertical)
-        // 4. Entrar na rua da nova resposta (horizontal)
-        // 5. Ir até a posição final (horizontal)
-
-        const originBranchX = originIsLeft ? roadCenterX - 60 : roadCenterX + 60;
-        const originBranchY = startY; // Mesma altura de onde está
-
-        setTimeout(() => {
-            // Etapa 1: Sair até a rua da resposta de origem (movimento horizontal)
-            tempAvatar.style.transition = 'all 0.4s ease-in-out';
-            tempAvatar.style.left = originBranchX + 'px';
-            tempAvatar.style.transform = `rotate(${originIsLeft ? 0 : 180}deg) scale(1.1)`;
-        }, delay);
-        delay += 450;
-
-        setTimeout(() => {
-            // Etapa 2: Ir pela rua até a avenida central (movimento horizontal)
-            tempAvatar.style.transition = 'all 0.4s ease-in-out';
-            tempAvatar.style.left = roadCenterX + 'px';
-            tempAvatar.style.transform = `rotate(${originIsLeft ? 90 : 270}deg) scale(1.2)`;
-        }, delay);
-        delay += 450;
-
-        setTimeout(() => {
-            // Etapa 3: Descer/subir pela avenida até a altura da nova resposta (movimento vertical)
-            tempAvatar.style.transition = 'all 0.5s ease-in-out';
-            tempAvatar.style.top = branchY + 'px';
-            tempAvatar.style.transform = `rotate(${branchY > originBranchY ? 180 : 0}deg) scale(1.3)`;
-        }, delay);
-        delay += 550;
-
-        setTimeout(() => {
-            // Etapa 4: Entrar na rua da nova resposta (movimento horizontal)
-            tempAvatar.style.transition = 'all 0.4s ease-in-out';
-            tempAvatar.style.left = branchX + 'px';
-            tempAvatar.style.transform = `rotate(${isLeft ? 270 : 90}deg) scale(1.1)`;
-        }, delay);
-        delay += 450;
-
-        setTimeout(() => {
-            // Etapa 5: Ir até a posição final (movimento horizontal)
-            tempAvatar.style.transition = 'all 0.5s ease-out';
-            tempAvatar.style.left = finalX + 'px';
-            tempAvatar.style.top = finalY + 'px';
-            tempAvatar.style.transform = 'rotate(360deg) scale(1)';
-        }, delay);
-        delay += 550;
-
+        // QUANDO SAI DE UMA RESPOSTA
+        const originZoneElement = document.querySelector(`[data-answer-index="${originAnswerIndex}"]`);
+        const originZoneRect = originZoneElement.getBoundingClientRect();
+        
+        // Pontos da bifurcação de origem
+        const originBranchStartY = originZoneRect.top + 30 - 25;
+        const originBranchStartX = originIsLeft ? roadRect.left - 25 : roadRect.right - 25;
+        
+        const originBranchEndX = originIsLeft 
+            ? originZoneRect.right - originZoneRect.width * 0.5 - 25
+            : originZoneRect.left + originZoneRect.width * 0.5 - 25;
+        const originBranchEndY = originBranchStartY;
+        
+        waypoints = [
+            { x: startX, y: startY },
+            { x: originBranchEndX, y: originBranchEndY },
+            { x: originBranchStartX, y: originBranchStartY },
+            { x: roadCenterX, y: originBranchStartY },
+            { x: roadCenterX, y: branchStartY },
+            { x: branchStartX, y: branchStartY },
+            { x: branchEndX, y: branchEndY },
+            { x: finalX, y: finalY }
+        ];
     } else {
-        // CAMINHO DA SALA DE ESPERA PARA RESPOSTA:
-        // 1. Sair da sala até o meio da avenida (movimento diagonal/direto)
-        // 2. Descer pela avenida até a altura da resposta (movimento vertical)
-        // 3. Entrar na rua da resposta (movimento horizontal)
-        // 4. Ir até a posição final (movimento horizontal)
-
-        setTimeout(() => {
-            // Etapa 1: Ir da sala de espera até a avenida central
-            tempAvatar.style.transition = 'all 0.5s ease-in-out';
-            tempAvatar.style.left = roadCenterX + 'px';
-            tempAvatar.style.top = startY + 'px';
-            tempAvatar.style.transform = 'rotate(90deg) scale(1.2)';
-        }, delay);
-        delay += 550;
-
-        setTimeout(() => {
-            // Etapa 2: Descer pela avenida até a altura da bifurcação
-            tempAvatar.style.transition = 'all 0.6s ease-in-out';
-            tempAvatar.style.top = branchY + 'px';
-            tempAvatar.style.transform = 'rotate(180deg) scale(1.3)';
-        }, delay);
-        delay += 650;
-
-        setTimeout(() => {
-            // Etapa 3: Entrar na rua da resposta (esquerda ou direita)
-            tempAvatar.style.transition = 'all 0.4s ease-in-out';
-            tempAvatar.style.left = branchX + 'px';
-            tempAvatar.style.transform = `rotate(${isLeft ? 270 : 90}deg) scale(1.1)`;
-        }, delay);
-        delay += 450;
-
-        setTimeout(() => {
-            // Etapa 4: Ir até a posição final
-            tempAvatar.style.transition = 'all 0.5s ease-out';
-            tempAvatar.style.left = finalX + 'px';
-            tempAvatar.style.top = finalY + 'px';
-            tempAvatar.style.transform = 'rotate(360deg) scale(1)';
-        }, delay);
-        delay += 550;
+        // QUANDO ESTÁ NA SALA DE ESPERA
+        waypoints = [
+            { x: startX, y: startY },
+            { x: roadCenterX, y: startY },
+            { x: roadCenterX, y: branchStartY },
+            { x: branchStartX, y: branchStartY },
+            { x: branchEndX, y: branchEndY },
+            { x: finalX, y: finalY }
+        ];
     }
 
-    // Finalizar: adicionar avatar fixo na zona
-    setTimeout(() => {
-        tempAvatar.remove();
+    // Animação com requestAnimationFrame - velocidade constante baseada em distância
+    let currentWaypoint = 0;
+    let progress = 0;
+    
+    // Calcular distâncias totais entre cada par de waypoints
+    const distances = [];
+    let totalDistance = 0;
+    for (let i = 0; i < waypoints.length - 1; i++) {
+        const dx = waypoints[i + 1].x - waypoints[i].x;
+        const dy = waypoints[i + 1].y - waypoints[i].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        distances.push(dist);
+        totalDistance += dist;
+    }
+    
+    // Calcular tempo proporcional para cada segmento (baseado na distância)
+    const segmentDurations = distances.map(d => d / totalDistance);
+    
+    // Velocidade constante em pixels por frame (ajuste este valor para controlar velocidade geral)
+    const pixelsPerFrame = 5;
+    const baseSpeed = pixelsPerFrame / totalDistance;
+
+    // Marcar animação como ativa
+    const animationState = { cancel: false };
+    activeAnimations.set(playerId, animationState);
+
+    function animate() {
+        // Verificar se animação foi cancelada
+        if (animationState.cancel) {
+            if (tempAvatar && tempAvatar.parentNode) {
+                tempAvatar.remove();
+            }
+            activeAnimations.delete(playerId);
+            return;
+        }
+
+        if (currentWaypoint >= waypoints.length - 1) {
+            finishAnimation();
+            return;
+        }
+
+        const start = waypoints[currentWaypoint];
+        const end = waypoints[currentWaypoint + 1];
+        const segmentDistance = distances[currentWaypoint];
+        
+        // Incremento proporcional à distância do segmento atual
+        const segmentSpeed = pixelsPerFrame / segmentDistance;
+        progress += segmentSpeed;
+        
+        // Garantir que progress não ultrapasse 1
+        if (progress > 1) progress = 1;
+        
+        // Interpolação linear (velocidade constante)
+        const currentX = start.x + (end.x - start.x) * progress;
+        const currentY = start.y + (end.y - start.y) * progress;
+
+        // Atualizar posição
+        tempAvatar.style.left = currentX + 'px';
+        tempAvatar.style.top = currentY + 'px';
+        
+        if (progress >= 1) {
+            progress = 0;
+            currentWaypoint++;
+            if (currentWaypoint >= waypoints.length - 1) {
+                finishAnimation();
+                return;
+            }
+        }
+
+        requestAnimationFrame(animate);
+    }
+
+    function easeInOutQuad(t) {
+        return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+    }
+
+    function finishAnimation() {
+        // Limpar estado de animação
+        activeAnimations.delete(playerId);
+        
+        // Remover avatar temporário
+        if (tempAvatar && tempAvatar.parentNode) {
+            tempAvatar.remove();
+        }
+        
+        // Remover qualquer avatar duplicado (incluindo temp) antes de criar o final
+        const existingAvatars = document.querySelectorAll(`[data-player-id="${playerId}"], [data-player-id="${playerId}-temp"]`);
+        existingAvatars.forEach(el => {
+            if (el.parentNode) el.remove();
+        });
         
         const animations = ['idle-bounce', 'idle-wiggle', 'idle-pulse', 'idle-sway'];
         const randomAnimation = animations[Math.floor(Math.random() * animations.length)];
@@ -481,9 +530,10 @@ function movePlayerToAnswer(playerId, answerId, playerName, playerColor) {
         const finalAvatar = document.createElement('div');
         finalAvatar.className = 'player-avatar bounce idle-animation';
         finalAvatar.style.backgroundColor = playerColor || player.color;
-        finalAvatar.textContent = (playerName || player.name).charAt(0).toUpperCase();
+        const displayName = playerName || player.name;
+        finalAvatar.textContent = isAnonymous ? '?' : displayName.charAt(0).toUpperCase();
         finalAvatar.setAttribute('data-player-id', playerId);
-        finalAvatar.setAttribute('data-name', playerName || player.name);
+        finalAvatar.setAttribute('data-name', isAnonymous ? 'Jogador' : displayName);
         finalAvatar.style.animationName = randomAnimation;
         finalAvatar.style.animationDelay = (Math.random() * 1.5) + 's';
         
@@ -495,7 +545,10 @@ function movePlayerToAnswer(playerId, answerId, playerName, playerColor) {
                 finalAvatar.classList.remove('bounce');
             }, 500);
         }
-    }, delay + 100);
+    }
+
+    // Iniciar animação
+    requestAnimationFrame(animate);
 }
 
 function updatePlayerPositions() {
@@ -544,7 +597,6 @@ function showResults() {
     document.getElementById('gameContainer').style.display = 'none';
     document.getElementById('resultsArea').style.display = 'block';
     
-    // Carregar estatísticas do quiz
     loadQuizStatistics();
 }
 
@@ -566,6 +618,7 @@ async function loadQuizStatistics() {
             questionData.answers.forEach((answer, idx) => {
                 const percentage = (answer.count / maxCount) * 100;
                 const barColor = answer.is_correct ? '#28a745' : '#6c757d';
+                const answerText = answer.answer_text || answer.text || 'Sem texto';
                 
                 chartsHTML += `
                     <div class="chart-bar-container">
@@ -575,7 +628,7 @@ async function loadQuizStatistics() {
                                 <span class="chart-count">${answer.count}</span>
                             </div>
                         </div>
-                        <div class="chart-answer-text">${answer.text}</div>
+                        <div class="chart-answer-text">${answerText}</div>
                     </div>
                 `;
             });
