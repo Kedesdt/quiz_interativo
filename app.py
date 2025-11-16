@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 import qrcode
 from io import BytesIO
 import base64
+import threading
+import time
 
 load_dotenv()
 
@@ -20,6 +22,80 @@ app.config["HOST_URL"] = os.getenv("HOST_URL", "http://localhost:5000")
 
 db = SQLAlchemy(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
+
+# Dicionário para controlar timers ativos
+quiz_timers = {}  # {quiz_code: {'thread': Thread, 'stop_flag': bool}}
+
+# Dicionário para rastrear heartbeats dos jogadores
+player_heartbeats = (
+    {}
+)  # {session_id: {'player_id': int, 'quiz_code': str, 'last_heartbeat': timestamp}}
+heartbeat_thread = None
+
+
+# Funções de timer
+def start_question_timer(quiz_code, time_limit):
+    """Inicia o timer para uma pergunta do quiz"""
+    # Parar timer anterior se existir
+    stop_question_timer(quiz_code)
+
+    def countdown():
+        time_left = time_limit
+        stop_flag = quiz_timers[quiz_code]["stop_flag"]
+
+        while time_left > 0 and not stop_flag[0]:
+            time.sleep(1)
+            time_left -= 1
+
+            # Enviar atualização para todos os clientes
+            socketio.emit("timer_update", {"time_left": time_left}, room=quiz_code)
+
+        # Tempo esgotado (se não foi interrompido)
+        if not stop_flag[0]:
+            socketio.emit("time_expired", {}, room=quiz_code)
+
+        # Limpar da lista de timers
+        if quiz_code in quiz_timers:
+            del quiz_timers[quiz_code]
+
+    # Criar flag de parada (lista para ser mutável)
+    stop_flag = [False]
+    thread = threading.Thread(target=countdown, daemon=True)
+    quiz_timers[quiz_code] = {"thread": thread, "stop_flag": stop_flag}
+    thread.start()
+
+
+def stop_question_timer(quiz_code):
+    """Para o timer ativo de um quiz"""
+    if quiz_code in quiz_timers:
+        quiz_timers[quiz_code]["stop_flag"][0] = True
+        # Aguardar thread terminar
+        if quiz_timers[quiz_code]["thread"].is_alive():
+            quiz_timers[quiz_code]["thread"].join(timeout=1)
+
+
+def start_heartbeat_monitor():
+    """Inicia monitoramento de heartbeats dos jogadores"""
+
+    def monitor():
+        while True:
+            time.sleep(5)  # Verificar a cada 5 segundos
+            current_time = time.time()
+            disconnected_players = []
+
+            # Identificar jogadores sem heartbeat por mais de 15 segundos
+            for session_id, data in list(player_heartbeats.items()):
+                if current_time - data["last_heartbeat"] > 15:
+                    disconnected_players.append(session_id)
+
+            # Apenas remover do tracking de heartbeats, não deletar do banco
+            for session_id in disconnected_players:
+                player_heartbeats.pop(session_id, None)
+
+    global heartbeat_thread
+    if heartbeat_thread is None or not heartbeat_thread.is_alive():
+        heartbeat_thread = threading.Thread(target=monitor, daemon=True)
+        heartbeat_thread.start()
 
 
 # Models
@@ -96,10 +172,10 @@ def save_quiz():
     code = secrets.token_urlsafe(6)[:6].upper()
 
     quiz = Quiz(
-        title=data["title"], 
-        code=code, 
+        title=data["title"],
+        code=code,
         time_limit=data.get("time_limit", 30),
-        is_anonymous=data.get("is_anonymous", False)
+        is_anonymous=data.get("is_anonymous", False),
     )
     db.session.add(quiz)
     db.session.flush()
@@ -130,19 +206,21 @@ def join_quiz(code):
     quiz = Quiz.query.filter_by(code=code).first()
     if not quiz:
         return "Quiz não encontrado", 404
-    
+
     # Gerar QR Code
     join_url = f"{app.config['HOST_URL']}/join/{code}"
     qr = qrcode.QRCode(version=1, box_size=10, border=4)
     qr.add_data(join_url)
     qr.make(fit=True)
-    
+
     img = qr.make_image(fill_color="black", back_color="white")
     buffered = BytesIO()
     img.save(buffered, format="PNG")
     qr_code_base64 = base64.b64encode(buffered.getvalue()).decode()
-    
-    return render_template("join_quiz.html", code=code, qr_code=qr_code_base64, join_url=join_url)
+
+    return render_template(
+        "join_quiz.html", code=code, qr_code=qr_code_base64, join_url=join_url
+    )
 
 
 @app.route("/host/<code>")
@@ -150,19 +228,25 @@ def host_quiz(code):
     quiz = Quiz.query.filter_by(code=code).first()
     if not quiz:
         return "Quiz não encontrado", 404
-    
+
     # Gerar QR Code
     join_url = f"{app.config['HOST_URL']}/join/{code}"
     qr = qrcode.QRCode(version=1, box_size=10, border=4)
     qr.add_data(join_url)
     qr.make(fit=True)
-    
+
     img = qr.make_image(fill_color="black", back_color="white")
     buffered = BytesIO()
     img.save(buffered, format="PNG")
     qr_code_base64 = base64.b64encode(buffered.getvalue()).decode()
-    
-    return render_template("host_quiz.html", code=code, quiz=quiz, qr_code=qr_code_base64, join_url=join_url)
+
+    return render_template(
+        "host_quiz.html",
+        code=code,
+        quiz=quiz,
+        qr_code=qr_code_base64,
+        join_url=join_url,
+    )
 
 
 @app.route("/api/quiz/<code>")
@@ -222,7 +306,16 @@ def handle_join_game(data):
         emit("error", {"message": "Quiz não encontrado"})
         return
 
-    # Gerar cor aleatória para o jogador
+    # Verificar se já existe um jogador com esse nome neste quiz
+    existing_player = Player.query.filter_by(quiz_id=quiz.id, name=player_name).first()
+
+    if existing_player and existing_player.session_id in player_heartbeats:
+        # Já existe outro jogador ativo com esse nome - adicionar sufixo
+        import random
+        suffix = random.randint(10, 99)
+        player_name = f"{player_name}{suffix}"
+
+    # Sempre criar novo jogador (sem recuperar histórico)
     import random
 
     colors = [
@@ -245,6 +338,16 @@ def handle_join_game(data):
     db.session.add(player)
     db.session.commit()
 
+    # Registrar heartbeat inicial
+    player_heartbeats[request.sid] = {
+        "player_id": player.id,
+        "quiz_code": quiz_code,
+        "last_heartbeat": time.time(),
+    }
+
+    # Iniciar monitor de heartbeat se ainda não estiver rodando
+    start_heartbeat_monitor()
+
     join_room(quiz_code)
 
     # Notificar todos sobre o novo jogador
@@ -260,23 +363,32 @@ def handle_join_game(data):
         "players_list",
         {"players": [{"id": p.id, "name": p.name, "color": p.color} for p in players]},
     )
-    
+
     # Enviar estado atual do quiz se já estiver ativo
     player_answers = {}
     if quiz.is_active and quiz.current_question_index >= 0:
         # Buscar respostas atuais dos jogadores para a pergunta atual
-        current_question = quiz.questions[quiz.current_question_index] if quiz.current_question_index < len(quiz.questions) else None
+        current_question = (
+            quiz.questions[quiz.current_question_index]
+            if quiz.current_question_index < len(quiz.questions)
+            else None
+        )
         if current_question:
-            responses = PlayerResponse.query.filter_by(question_id=current_question.id).all()
+            responses = PlayerResponse.query.filter_by(
+                question_id=current_question.id
+            ).all()
             for response in responses:
                 if response.answer_id:
                     player_answers[response.player_id] = response.answer_id
-    
-    emit('quiz_state', {
-        'is_active': quiz.is_active,
-        'current_question_index': quiz.current_question_index,
-        'player_answers': player_answers
-    })
+
+    emit(
+        "quiz_state",
+        {
+            "is_active": quiz.is_active,
+            "current_question_index": quiz.current_question_index,
+            "player_answers": player_answers,
+        },
+    )
 
 
 @socketio.on("join_host")
@@ -305,6 +417,9 @@ def handle_start_quiz(data):
 
         emit("quiz_started", {"question_index": 0}, room=quiz_code)
 
+        # Iniciar timer para primeira pergunta
+        start_question_timer(quiz_code, quiz.time_limit)
+
 
 @socketio.on("next_question")
 def handle_next_question(data):
@@ -312,6 +427,9 @@ def handle_next_question(data):
     quiz = Quiz.query.filter_by(code=quiz_code).first()
 
     if quiz:
+        # Parar timer da pergunta anterior
+        stop_question_timer(quiz_code)
+
         quiz.current_question_index += 1
         db.session.commit()
 
@@ -321,6 +439,8 @@ def handle_next_question(data):
                 {"question_index": quiz.current_question_index},
                 room=quiz_code,
             )
+            # Iniciar timer para próxima pergunta
+            start_question_timer(quiz_code, quiz.time_limit)
         else:
             emit("quiz_ended", {}, room=quiz_code)
 
@@ -367,45 +487,38 @@ def handle_select_answer(data):
 
 @socketio.on("disconnect")
 def handle_disconnect():
-    player = Player.query.filter_by(session_id=request.sid).first()
-    if player:
-        quiz = Quiz.query.get(player.quiz_id)
-        player_id = player.id
-        player_name = player.name
-        quiz_code = quiz.code
-        
-        # Deletar respostas do jogador
-        PlayerResponse.query.filter_by(player_id=player_id).delete()
-        
-        # Deletar jogador do banco de dados
-        db.session.delete(player)
-        db.session.commit()
-        
-        # Notificar outros jogadores
-        emit(
-            "player_left", {"player_id": player_id, "name": player_name}, room=quiz_code
-        )
+    # Apenas remover do rastreamento de heartbeat
+    # O monitor de heartbeat vai cuidar de remover jogadores inativos
+    if request.sid in player_heartbeats:
+        del player_heartbeats[request.sid]
+
+
+@socketio.on("heartbeat")
+def handle_heartbeat():
+    """Atualiza o timestamp do heartbeat do jogador"""
+    if request.sid in player_heartbeats:
+        player_heartbeats[request.sid]["last_heartbeat"] = time.time()
 
 
 @socketio.on("terminate_quiz")
 def handle_terminate_quiz(data):
     quiz_code = data["quiz_code"]
     quiz = Quiz.query.filter_by(code=quiz_code).first()
-    
+
     if quiz:
         # Deletar todas as respostas dos jogadores
         for player in quiz.players:
             PlayerResponse.query.filter_by(player_id=player.id).delete()
-        
+
         # Deletar todos os jogadores
         Player.query.filter_by(quiz_id=quiz.id).delete()
-        
+
         # Resetar o quiz para poder ser usado novamente
         quiz.is_active = False
         quiz.current_question_index = 0
-        
+
         db.session.commit()
-        
+
         # Desconectar todos os jogadores
         emit("quiz_terminated", {}, room=quiz_code)
 
@@ -415,37 +528,36 @@ def get_quiz_stats(code):
     quiz = Quiz.query.filter_by(code=code).first()
     if not quiz:
         return jsonify({"error": "Quiz não encontrado"}), 404
-    
+
     stats = []
-    
+
     for question in sorted(quiz.questions, key=lambda q: q.order):
         question_stats = {
             "question_id": question.id,
             "question_text": question.text,
-            "answers": []
+            "answers": [],
         }
-        
+
         # Para cada resposta, contar quantos jogadores selecionaram
         for answer in sorted(question.answers, key=lambda a: a.order):
             count = PlayerResponse.query.filter_by(
-                question_id=question.id,
-                answer_id=answer.id
+                question_id=question.id, answer_id=answer.id
             ).count()
-            
-            question_stats["answers"].append({
-                "answer_id": answer.id,
-                "answer_text": answer.text,
-                "is_correct": answer.is_correct,
-                "count": count
-            })
-        
+
+            question_stats["answers"].append(
+                {
+                    "answer_id": answer.id,
+                    "answer_text": answer.text,
+                    "is_correct": answer.is_correct,
+                    "count": count,
+                }
+            )
+
         stats.append(question_stats)
-    
-    return jsonify({
-        "quiz_title": quiz.title,
-        "total_players": len(quiz.players),
-        "stats": stats
-    })
+
+    return jsonify(
+        {"quiz_title": quiz.title, "total_players": len(quiz.players), "stats": stats}
+    )
 
 
 if __name__ == "__main__":

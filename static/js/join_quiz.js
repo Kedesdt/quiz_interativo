@@ -74,7 +74,16 @@ async function joinGame() {
 
     socket.on('player_left', (data) => {
         players.delete(data.player_id);
-        updatePlayerPositions();
+        // Remover avatar da sala de espera
+        const waitingAvatar = document.querySelector(`.players-waiting .player-avatar[data-player-id="${data.player_id}"]`);
+        if (waitingAvatar) {
+            waitingAvatar.remove();
+        }
+        // Remover avatar das zonas de resposta
+        const answerAvatar = document.querySelector(`.answer-zone .player-avatar[data-player-id="${data.player_id}"]`);
+        if (answerAvatar) {
+            answerAvatar.remove();
+        }
     });
 
     socket.on('quiz_started', (data) => {
@@ -99,6 +108,27 @@ async function joinGame() {
         window.location.href = '/';
     });
 
+    socket.on('timer_update', (data) => {
+        const timerEl = document.getElementById('timer');
+        timerEl.textContent = data.time_left;
+        
+        if (data.time_left <= 10) {
+            timerEl.style.color = '#dc3545';
+        } else {
+            timerEl.style.color = '#28a745';
+        }
+    });
+
+    socket.on('time_expired', () => {
+        canSelectAnswer = false;
+        document.querySelectorAll('.answer-zone').forEach(zone => {
+            zone.classList.add('disabled');
+        });
+        const timerEl = document.getElementById('timer');
+        timerEl.textContent = 'Tempo Esgotado!';
+        timerEl.style.color = '#dc3545';
+    });
+
     // Carregar dados do quiz
     const response = await fetch(`/api/quiz/${quizCode}`);
     quizData = await response.json();
@@ -107,6 +137,13 @@ async function joinGame() {
 
     document.getElementById('nameEntry').style.display = 'none';
     document.getElementById('gameArea').style.display = 'block';
+    
+    // Iniciar heartbeat a cada 5 segundos
+    setInterval(() => {
+        if (socket && socket.connected) {
+            socket.emit('heartbeat');
+        }
+    }, 5000);
 }
 
 function startQuiz() {
@@ -213,8 +250,6 @@ function loadQuestion(index) {
 
     // Retornar todos os jogadores para a sala de espera
     returnAllPlayersToWaitingRoom();
-
-    startTimer(quizData.time_limit);
 }
 
 function returnAllPlayersToWaitingRoom() {

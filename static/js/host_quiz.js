@@ -49,6 +49,23 @@ async function init() {
         window.location.href = '/';
     });
 
+    socket.on('timer_update', (data) => {
+        const timerEl = document.getElementById('timer');
+        timerEl.textContent = data.time_left;
+        
+        if (data.time_left <= 10) {
+            timerEl.style.color = '#dc3545';
+        } else {
+            timerEl.style.color = '#28a745';
+        }
+    });
+
+    socket.on('time_expired', () => {
+        const timerEl = document.getElementById('timer');
+        timerEl.textContent = 'Tempo Esgotado!';
+        timerEl.style.color = '#dc3545';
+    });
+
     // Carregar quiz
     const response = await fetch(`/api/quiz/${quizCode}?host=true`);
     quizData = await response.json();
@@ -121,7 +138,6 @@ function loadQuestion(index) {
         playerAnswers.set(question.id, new Map());
     }
 
-    startTimer(quizData.time_limit);
     updateAnswersDisplay();
 
     // Atualizar botão
