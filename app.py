@@ -21,7 +21,13 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["HOST_URL"] = os.getenv("HOST_URL", "http://localhost:5000")
 
 db = SQLAlchemy(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
+# Adicionar configurações de CORS e transporte para melhor compatibilidade mobile
+socketio = SocketIO(app, cors_allowed_origins="*", 
+                    async_mode='threading',
+                    logger=True, 
+                    engineio_logger=True,
+                    ping_timeout=60,
+                    ping_interval=25)
 
 # Dicionário para controlar timers ativos
 quiz_timers = {}  # {quiz_code: {'thread': Thread, 'stop_flag': bool}}
