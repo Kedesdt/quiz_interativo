@@ -15,7 +15,7 @@ import time
 load_dotenv()
 
 app = Flask(__name__)
-app.config["SECRET_KEY"] = secrets.token_hex(16)
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", secrets.token_hex(16))
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///quiz.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["HOST_URL"] = os.getenv("HOST_URL", "http://localhost:5000")
@@ -312,6 +312,7 @@ def handle_join_game(data):
     if existing_player and existing_player.session_id in player_heartbeats:
         # Já existe outro jogador ativo com esse nome - adicionar sufixo
         import random
+
         suffix = random.randint(10, 99)
         player_name = f"{player_name}{suffix}"
 
@@ -563,4 +564,10 @@ def get_quiz_stats(code):
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
-    socketio.run(app, debug=True, host="0.0.0.0", port=5000)
+
+    # Configurações de servidor a partir de variáveis de ambiente
+    debug_mode = os.getenv("FLASK_DEBUG", "True").lower() == "true"
+    host = os.getenv("FLASK_HOST", "0.0.0.0")
+    port = int(os.getenv("FLASK_PORT", "5000"))
+
+    socketio.run(app, debug=debug_mode, host=host, port=port)
