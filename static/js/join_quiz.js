@@ -98,6 +98,11 @@ async function joinGame() {
         showResults();
     });
 
+    socket.on('quiz_terminated', () => {
+        alert('O quiz foi encerrado pelo host. Você será redirecionado.');
+        window.location.href = '/';
+    });
+
     // Carregar dados do quiz
     const response = await fetch(`/api/quiz/${quizCode}`);
     quizData = await response.json();
@@ -538,4 +543,54 @@ function showResults() {
     
     document.getElementById('gameContainer').style.display = 'none';
     document.getElementById('resultsArea').style.display = 'block';
+    
+    // Carregar estatísticas do quiz
+    loadQuizStatistics();
 }
+
+async function loadQuizStatistics() {
+    try {
+        const response = await fetch(`/api/quiz/${quizCode}/stats`);
+        const data = await response.json();
+        
+        const container = document.getElementById('resultsChartsContainer');
+        container.innerHTML = '';
+        
+        data.stats.forEach((questionData, index) => {
+            const chartCard = document.createElement('div');
+            chartCard.className = 'chart-card';
+            
+            const maxCount = Math.max(...questionData.answers.map(a => a.count), 1);
+            
+            let chartsHTML = '<div class="chart-bars">';
+            questionData.answers.forEach((answer, idx) => {
+                const percentage = (answer.count / maxCount) * 100;
+                const barColor = answer.is_correct ? '#28a745' : '#6c757d';
+                
+                chartsHTML += `
+                    <div class="chart-bar-container">
+                        <div class="chart-label">${String.fromCharCode(65 + idx)}</div>
+                        <div class="chart-bar-wrapper">
+                            <div class="chart-bar" style="width: ${percentage}%; background-color: ${barColor};">
+                                <span class="chart-count">${answer.count}</span>
+                            </div>
+                        </div>
+                        <div class="chart-answer-text">${answer.text}</div>
+                    </div>
+                `;
+            });
+            chartsHTML += '</div>';
+            
+            chartCard.innerHTML = `
+                <h3>Pergunta ${index + 1}</h3>
+                <p class="question-text-chart">${questionData.question_text}</p>
+                ${chartsHTML}
+            `;
+            
+            container.appendChild(chartCard);
+        });
+    } catch (error) {
+        console.error('Erro ao carregar estatísticas:', error);
+    }
+}
+

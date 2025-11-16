@@ -348,6 +348,67 @@ def handle_disconnect():
         )
 
 
+@socketio.on("terminate_quiz")
+def handle_terminate_quiz(data):
+    quiz_code = data["quiz_code"]
+    quiz = Quiz.query.filter_by(code=quiz_code).first()
+    
+    if quiz:
+        # Deletar todas as respostas dos jogadores
+        for player in quiz.players:
+            PlayerResponse.query.filter_by(player_id=player.id).delete()
+        
+        # Deletar todos os jogadores
+        Player.query.filter_by(quiz_id=quiz.id).delete()
+        
+        # Resetar o quiz para poder ser usado novamente
+        quiz.is_active = False
+        quiz.current_question_index = 0
+        
+        db.session.commit()
+        
+        # Desconectar todos os jogadores
+        emit("quiz_terminated", {}, room=quiz_code)
+
+
+@app.route("/api/quiz/<code>/stats")
+def get_quiz_stats(code):
+    quiz = Quiz.query.filter_by(code=code).first()
+    if not quiz:
+        return jsonify({"error": "Quiz não encontrado"}), 404
+    
+    stats = []
+    
+    for question in sorted(quiz.questions, key=lambda q: q.order):
+        question_stats = {
+            "question_id": question.id,
+            "question_text": question.text,
+            "answers": []
+        }
+        
+        # Para cada resposta, contar quantos jogadores selecionaram
+        for answer in sorted(question.answers, key=lambda a: a.order):
+            count = PlayerResponse.query.filter_by(
+                question_id=question.id,
+                answer_id=answer.id
+            ).count()
+            
+            question_stats["answers"].append({
+                "answer_id": answer.id,
+                "answer_text": answer.text,
+                "is_correct": answer.is_correct,
+                "count": count
+            })
+        
+        stats.append(question_stats)
+    
+    return jsonify({
+        "quiz_title": quiz.title,
+        "total_players": len(quiz.players),
+        "stats": stats
+    })
+
+
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()

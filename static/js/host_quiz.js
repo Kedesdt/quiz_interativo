@@ -43,6 +43,12 @@ async function init() {
         updateAnswersDisplay();
     });
 
+    socket.on('quiz_terminated', () => {
+        // Redirecionar para a página inicial quando o quiz for encerrado
+        alert('Quiz encerrado! Todos os dados foram limpos.');
+        window.location.href = '/';
+    });
+
     // Carregar quiz
     const response = await fetch(`/api/quiz/${quizCode}?host=true`);
     quizData = await response.json();
@@ -201,6 +207,64 @@ function endQuiz() {
 
     document.getElementById('totalPlayers').textContent = players.size;
     document.getElementById('totalQuestions').textContent = quizData.questions.length;
+
+    // Carregar e exibir gráficos de estatísticas
+    loadStatistics();
+}
+
+async function loadStatistics() {
+    const response = await fetch(`/api/quiz/${quizCode}/stats`);
+    const data = await response.json();
+    
+    const container = document.getElementById('chartsContainer');
+    container.innerHTML = '';
+    
+    data.stats.forEach((questionData, index) => {
+        const chartCard = document.createElement('div');
+        chartCard.className = 'chart-card';
+        
+        const maxCount = Math.max(...questionData.answers.map(a => a.count), 1);
+        
+        let chartsHTML = '<div class="chart-bars">';
+        questionData.answers.forEach((answer, idx) => {
+            const percentage = (answer.count / maxCount) * 100;
+            const barColor = answer.is_correct ? '#28a745' : '#6c757d';
+            
+            chartsHTML += `
+                <div class="chart-bar-container">
+                    <div class="chart-label">${String.fromCharCode(65 + idx)}</div>
+                    <div class="chart-bar-wrapper">
+                        <div class="chart-bar" style="width: ${percentage}%; background-color: ${barColor};">
+                            <span class="chart-count">${answer.count}</span>
+                        </div>
+                    </div>
+                    <div class="chart-answer-text">${answer.text}</div>
+                </div>
+            `;
+        });
+        chartsHTML += '</div>';
+        
+        chartCard.innerHTML = `
+            <h3>Pergunta ${index + 1}</h3>
+            <p class="question-text-chart">${questionData.question_text}</p>
+            ${chartsHTML}
+        `;
+        
+        container.appendChild(chartCard);
+    });
+}
+
+function terminateQuiz() {
+    if (!confirm('Tem certeza que deseja encerrar o quiz e limpar todos os dados? Esta ação não pode ser desfeita.')) {
+        return;
+    }
+    
+    socket.emit('terminate_quiz', {
+        quiz_code: quizCode
+    });
+    
+    alert('Quiz encerrado! Redirecionando...');
+    window.location.href = '/';
 }
 
 init();

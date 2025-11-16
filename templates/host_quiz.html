@@ -55,7 +55,8 @@
 
                 <div id="resultsScreen" class="results-screen" style="display: none;">
                     <h2>🎉 Quiz Finalizado!</h2>
-                    <div class="stats-grid">
+                    
+                    <div class="stats-grid" style="margin-bottom: 30px;">
                         <div class="stat-card">
                             <div class="stat-value" id="totalPlayers">0</div>
                             <div class="stat-label">Jogadores</div>
@@ -65,9 +66,19 @@
                             <div class="stat-label">Perguntas</div>
                         </div>
                     </div>
-                    <button class="btn btn-primary" onclick="window.location.href='/'" style="margin-top: 30px;">
-                        🏠 Voltar ao Início
-                    </button>
+
+                    <div id="chartsContainer" class="charts-container">
+                        <!-- Gráficos serão inseridos aqui -->
+                    </div>
+
+                    <div style="display: flex; gap: 15px; justify-content: center; margin-top: 30px;">
+                        <button class="btn btn-danger" onclick="terminateQuiz()">
+                            🗑️ Encerrar e Limpar Dados
+                        </button>
+                        <button class="btn btn-primary" onclick="window.location.href='/'">
+                            🏠 Voltar ao Início
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

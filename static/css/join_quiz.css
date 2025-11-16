@@ -446,6 +446,8 @@ body {
     padding: 50px;
     text-align: center;
     box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    max-height: 90vh;
+    overflow-y: auto;
 }
 
 .results-screen h2 {
@@ -453,3 +455,95 @@ body {
     font-size: 2.5em;
     margin-bottom: 30px;
 }
+
+/* Charts Container */
+.charts-container {
+    margin-top: 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 30px;
+    text-align: left;
+}
+
+.chart-card {
+    background: #f8f9fa;
+    border-radius: 15px;
+    padding: 25px;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+}
+
+.chart-card h3 {
+    color: #667eea;
+    font-size: 1.5em;
+    margin-bottom: 10px;
+}
+
+.question-text-chart {
+    color: #333;
+    font-size: 1.1em;
+    margin-bottom: 20px;
+    font-weight: 500;
+}
+
+.chart-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.chart-bar-container {
+    display: grid;
+    grid-template-columns: 40px 1fr 250px;
+    align-items: center;
+    gap: 15px;
+}
+
+.chart-label {
+    font-size: 1.3em;
+    font-weight: 700;
+    color: #667eea;
+    text-align: center;
+    background: white;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.chart-bar-wrapper {
+    background: #e9ecef;
+    border-radius: 8px;
+    height: 40px;
+    position: relative;
+    overflow: hidden;
+}
+
+.chart-bar {
+    height: 100%;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 10px;
+    transition: width 0.5s ease;
+    min-width: 50px;
+}
+
+.chart-count {
+    color: white;
+    font-weight: 700;
+    font-size: 1.1em;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+
+.chart-answer-text {
+    color: #555;
+    font-size: 0.95em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
